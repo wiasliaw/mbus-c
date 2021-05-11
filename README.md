@@ -1,1 +1,1 @@
-# c-project-template
+# mbus-c

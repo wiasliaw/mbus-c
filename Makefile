@@ -20,7 +20,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-main:	$(OBJS_FILES)
+main: $(OBJS_FILES)
 	@mkdir -p $(BIN_DIR)
 	gcc -o $(TARGET_FILES) $(OBJS_FILES)
 
