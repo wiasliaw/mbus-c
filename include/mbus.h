@@ -1,5 +1,6 @@
 #ifndef MBUS_H
 #define MBUS_H
+#include <stdatomic.h>
 
 #define BUS_DEFAULT_CLIENTS 128
 #define BUS_MAX_CLIENTS UINT_MAX
@@ -7,20 +8,15 @@
 typedef unsigned int bus_client_id_t;
 typedef void (*bus_client_cb_t)(void *ctx, void *msg);
 
-/* FIXME: rewrite with <stdatomic.h> */
-#define CAS(dst, expected, value)                                        \
-    __atomic_compare_exchange(dst, expected, value, 0, __ATOMIC_SEQ_CST, \
-                              __ATOMIC_SEQ_CST)
-
 typedef struct {
     bool registered;
-    unsigned int refcnt;
+    atomic_uint refcnt;
     bus_client_cb_t callback;
     void *ctx;
 } bus_client_t;
 
 typedef struct {
-    bus_client_t *clients;
+    _Atomic bus_client_t *clients;
     const unsigned int n_clients;
 } bus_t;
 

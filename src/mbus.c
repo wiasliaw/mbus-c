@@ -1,3 +1,4 @@
+#include <stdatomic.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -23,7 +24,7 @@ bus_new(bus_t **bus, unsigned int n_clients)
     /* Initialize bus struct */
     *(unsigned int *) &b->n_clients =
         !n_clients ? BUS_DEFAULT_CLIENTS : n_clients;
-    if (!(b->clients = calloc(b->n_clients, sizeof(bus_client_t)))) {
+    if (!(b->clients = calloc(b->n_clients, sizeof(_Atomic bus_client_t)))) {
         free(b);
         return false;
     }
@@ -57,18 +58,18 @@ bus_register(bus_t *bus,
         .refcnt = 0,
     };
 
-    return (bool) CAS(&(bus->clients[id]), &null_client, &new_client);
+    // return (bool) CAS(&(bus->clients[id]), &null_client, &new_client);
+    return (bool) atomic_compare_exchange_weak(&(bus->clients[id]), &null_client, new_client);
 }
 
 /*
  * Attempt to call a client's callback function to send a message.
  * Might fail if such client gets unregistered while attempting to send message.
  */
-static bool execute_client_callback(bus_client_t *client, void *msg)
+static bool execute_client_callback(_Atomic bus_client_t *client, void *msg)
 {
     /* Load the client with which we are attempting to communicate. */
-    bus_client_t local_client;
-    __atomic_load(client, &local_client, __ATOMIC_SEQ_CST);
+    bus_client_t local_client = atomic_load(client);
 
     /* Loop until reference count isupdated or client becomes unregistered */
     while (local_client.registered) {
@@ -80,10 +81,10 @@ static bool execute_client_callback(bus_client_t *client, void *msg)
          * we updated it successfully. If CAS fails, the client was updated
          * recently. The actual value is copied to local_client.
          */
-        if (CAS(client, &local_client, &new_client)) {
+        if (atomic_compare_exchange_weak(client, &local_client, new_client)) {
             /* Send a message and decrease the reference count back */
             local_client.callback(local_client.ctx, msg);
-            __atomic_fetch_sub(&(client->refcnt), 1, __ATOMIC_SEQ_CST);
+            atomic_store(client, local_client);
             return true;
         }
     }
@@ -124,7 +125,7 @@ bus_unregister(bus_t *bus, bus_client_id_t id)
 
     /* Load the client we are attempting to unregister */
     bus_client_t local_client, null_client = {0};
-    __atomic_load(&(bus->clients[id]), &local_client, __ATOMIC_SEQ_CST);
+    local_client = atomic_load(&(bus->clients[id]));
 
     /* It was already unregistered */
     if (!local_client.registered)
@@ -137,7 +138,7 @@ bus_unregister(bus_t *bus, bus_client_id_t id)
          * If CAS does not succeed, the value of the client gets copied into
          * local_client.
          */
-        if (CAS(&(bus->clients[id]), &local_client, &null_client))
+        if (atomic_compare_exchange_weak(&(bus->clients[id]), &local_client, null_client))
             return true;
     } while (local_client.registered);
 
